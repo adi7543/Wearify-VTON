@@ -1,0 +1,52 @@
+# =========================
+# Python & Virtual Env
+# =========================
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# =========================
+# IDE
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# Data (VERY IMPORTANT)
+# =========================
+data/
+our dataset/
+ours/
+
+# =========================
+# Models & checkpoints
+# =========================
+checkpoints/
+models/
+*.pth
+*.ckpt
+*.onnx
+
+# =========================
+# OpenPose (binaries & models)
+# =========================
+openpose/
+
+# =========================
+# External repositories
+# =========================
+Self-Correction-Human-Parsing/
+
+# =========================
+# Logs & outputs
+# =========================
+logs/
+wandb/
+outputs/
+
+# =========================
+# OS
+# =========================
+Thumbs.db
+.DS_Store

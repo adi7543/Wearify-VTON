@@ -1,0 +1,33 @@
+Model: mattmdjaga/segformer_b2_clothes
+Images Processed	: 50
+Average Inference Speed	: 8.98 FPS
+Mean Model Confidence	: 98.06%
+Min Confidence		: 93.74%
+
+
+Model: SCHP (Self-Correction Human Parsing)
+Images Processed	: 50
+Average Inference Speed	: 6.53 FPS
+Mean Model Confidence 	: 89.61 %
+Min Confidence  	: 85.25 %
+
+
+Resized all images, pose, and parse
+1 created a raw image of 1024x1024
+2 pasted the original image on this (to create a padding and a 1:1 image)
+3 resized to 512x512
+
+Model: mattmdjaga/segformer_b2_clothes
+Average Inference Speed: 10.12 FPS
+Mean Model Confidence: 98.41%
+Min Confidence: 95.96%
+
+========================================
+       SCHP BENCHMARK RESULTS
+========================================
+ Images Processed: 50
+ Average Speed   : 8.52 FPS
+ Mean Confidence : 89.44 %
+ Min Confidence  : 84.82 %
+========================================
+
