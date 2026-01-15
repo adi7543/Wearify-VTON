@@ -36,3 +36,10 @@ https://huggingface.co/Salesforce/blip-image-captioning-base
 
 Generated prompts are saved as:
 prompts.json
+
+
+## Environment
+Tested with:
+- Python 3.10
+- PyTorch 2.x
+- CUDA 11.8

@@ -39,11 +39,13 @@ class WearifyDataset(Dataset):
         def load_img(path):
             img = cv2.imread(path)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, (256, 256))
             img = (img.astype(np.float32) / 127.5) - 1.0
             return torch.from_numpy(img).permute(2, 0, 1)
 
         def load_mask(path):
             mask = cv2.imread(path, 0)  # Grayscale
+            mask = cv2.resize(mask, (256, 256))
             mask = mask.astype(np.float32) / 255.0
             return torch.from_numpy(mask).unsqueeze(0)  # (1, H, W)
 
@@ -53,7 +55,7 @@ class WearifyDataset(Dataset):
             "agnostic": load_img(agnostic_path),
             "cloth": load_img(cloth_path),
             "cloth_mask": load_mask(mask_path),
-            "pose": load_img(pose_path),
+            "pose": load_mask(pose_path),
             "parse": load_mask(parse_path),
             "prompt": prompt
         }
@@ -78,12 +80,13 @@ text_encoder.eval()
 for p in text_encoder.parameters():
     p.requires_grad = False
 
+
 unet = UNet2DConditionModel(
-    sample_size=512,            # or 768 if VRAM allows
-    in_channels=13,
+    sample_size=256,            # or 768 if VRAM allows
+    in_channels=11,
     out_channels=3,             # predict noise
     layers_per_block=2,
-    block_out_channels=(128, 256, 512, 512),
+    block_out_channels=(64, 128, 256, 256),
     down_block_types=(
         "DownBlock2D",
         "DownBlock2D",
@@ -104,16 +107,26 @@ noise_scheduler = DDPMScheduler(
     beta_schedule="scaled_linear"
 )
 
+resume_epoch = 9
+checkpoint_path = f"checkpoints/wearify_epoch_{resume_epoch}.pt"
+
+if os.path.exists(checkpoint_path):
+    print(f"Resuming training from epoch {resume_epoch}")
+    unet.load_state_dict(torch.load(checkpoint_path, map_location=device))
+else:
+    print("No checkpoint found, starting from scratch")
+    resume_epoch = -1
+
 optimizer = AdamW(unet.parameters(), lr=1e-4)
 
-epochs = 1
+total_epochs = 20
 grad_accum = 2   # helps 6GB VRAM
 
 unet.train()
 
 os.makedirs("checkpoints", exist_ok=True)
 
-for epoch in range(epochs):
+for epoch in range(resume_epoch + 1, total_epochs):
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
     optimizer.zero_grad()
 
@@ -151,7 +164,6 @@ for epoch in range(epochs):
             target, noise, timesteps
         )
 
-        # 🔥 IMPORTANT FIX
         model_input = torch.cat([noisy_target, cond], dim=1)
 
         noise_pred = unet(
