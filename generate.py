@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 # ================== SETTINGS ==================
 device = "cuda" if torch.cuda.is_available() else "cpu"
-checkpoint_path = "checkpoints/wearify_epoch_9.pt"   # change if needed
+checkpoint_path = "checkpoints/wearify_epoch_19.pt"   # change if needed
 output_path = "generated_test1.png"
 sample_index = 0   # which test image to generate
 img_size = 256

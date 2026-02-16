@@ -1,13 +1,11 @@
 import os
 from PIL import Image
 
-# ---- CONFIG ----
-IMAGE_DIR = r"F:\University\fyp\dataset\our dataset\New folder"  # change this
+IMAGE_DIR = r"../raw images/New Folder/"
 MIN_WIDTH = 768
 MIN_HEIGHT = 1024
 SUPPORTED_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
-# ---- SCRIPT ----
 def delete_low_resolution_images(folder):
     deleted_count = 0
 
@@ -31,6 +29,5 @@ def delete_low_resolution_images(folder):
 
     print(f"\nDone. Total images deleted: {deleted_count}")
 
-# ---- RUN ----
 if __name__ == "__main__":
     delete_low_resolution_images(IMAGE_DIR)

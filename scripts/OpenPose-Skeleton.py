@@ -3,10 +3,8 @@ import os
 import cv2
 import numpy as np
 
-
-coordts = os.listdir("../our dataset/openpose-json\\")
-input_folder = "our dataset\\openpose-json\\"
-output_folder = "our dataset\\openpose-skeleton\\"
+input_folder = r"../our dataset/openpose-json/"
+output_folder = r"../our dataset/openpose-skeleton/"
 os.makedirs(output_folder, exist_ok=True)
 
 skeleton = [
@@ -74,7 +72,7 @@ joint_colors = [
     (255, 0, 255)      # 18: L-Ear (Purple)
 ]
 
-for img in coordts:
+for img in os.listdir(input_folder):
     if img .endswith(".json"):
         json_file = os.path.join(input_folder, img)
         with open(json_file, 'r') as file:

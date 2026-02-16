@@ -6,8 +6,8 @@ from transformers import SegformerImageProcessor, AutoModelForSemanticSegmentati
 from PIL import Image
 
 # --- 1. PATH CONFIGURATION ---
-input_folder = r"our dataset/images-resized"  # Folder containing your original JPGs
-output_folder = r"our dataset/images-parse"  # Folder to save the new Maps
+input_folder = r"../raw images/images-resized"  # Folder containing your original JPGs
+output_folder = r"../raw images/images-parse"  # Folder to save the new Maps
 os.makedirs(output_folder, exist_ok=True)
 
 # --- 2. LOAD SEGFORMER MODEL ---

@@ -2,12 +2,8 @@ import os
 from PIL import Image
 from tqdm import tqdm
 
-# --- CONFIGURATION ---
-# Input: Where your current (bluish) images are
-input_folder = r"our dataset\New folder\extracted_garments6"
-
-# Output: Where the fixed images will go (Using F: to be safe)
-output_folder = r"our dataset\New folder\fixed_garments"
+input_folder = r"..\raw images\extracted_garments"
+output_folder = r"..\raw images\cloth"
 os.makedirs(output_folder, exist_ok=True)
 
 # --- BATCH PROCESSING ---

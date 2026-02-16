@@ -2,23 +2,16 @@ import os
 import subprocess
 
 # --- 1. DEFINE ALL YOUR PATHS (NOW RELATIVE) ---
-
-# Make sure this matches your unzipped folder name
-openpose_root = "openpose"
+openpose_root = r"../openpose"
 
 openpose_exe = os.path.join(openpose_root, "bin/OpenPoseDemo.exe")
 
-# *** THE FIX: Explicitly set the model folder path ***
 openpose_model_folder = os.path.join(openpose_root, "models/")
 
-# Path to your input images (*** FIX: Corrected 'image' to 'images' ***)
-input_images = "our dataset/images-resized"
+input_images = r"../our dataset/images-resized"
 
-# Paths for the new output data
-output_json = "F:/University/fyp/Project/Wearify/our dataset/openpose-json/"
-output_images = "F:/University/fyp/Project/Wearify/our dataset/openpose-img/"
-
-# --- 2. CREATE OUTPUT FOLDERS (if they don't exist) ---
+output_json = r"../our dataset/openpose-json/"
+output_images = r"../our dataset/openpose-img/"
 os.makedirs(output_json, exist_ok=True)
 os.makedirs(output_images, exist_ok=True)
 
