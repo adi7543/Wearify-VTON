@@ -30,13 +30,6 @@ https://huggingface.co/nvidia/segformer
 Used for:
 - Human parsing
 
-#### 3. BLIP
-BLIP is used to generate text prompts from garment images:
-https://huggingface.co/Salesforce/blip-image-captioning-base
-
-Generated prompts are saved as:
-prompts.json
-
 
 ## Environment
 Tested with:
