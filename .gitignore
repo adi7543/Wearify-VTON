@@ -50,3 +50,13 @@ outputs/
 # =========================
 Thumbs.db
 .DS_Store
+/final_predictions/
+/GroundingDINO/
+/images_to_fix/
+/data(old)/
+/inference/
+/raw images/
+/Self-Correction-Human-Parsing/
+/training/
+/utils/
+/visualizations/
