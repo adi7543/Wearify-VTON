@@ -4,9 +4,9 @@ import cv2
 import numpy as np
 
 # --- CONFIGURATION ---
-DATA_ROOT = r"../dataset_mfp_final"
-OUTPUT_TRAIN = r"../dataset_mfp_final/train_pairs.txt"
-OUTPUT_TEST = r"../dataset_mfp_final/test_pairs.txt"
+DATA_ROOT = r"../dataset_final"
+OUTPUT_TRAIN = r"../dataset_final/train_pairs.txt"
+OUTPUT_TEST = r"../dataset_final/test_pairs.txt"
 SPLIT_RATIO = 0.80
 
 
@@ -46,35 +46,18 @@ def main():
         p_mask = os.path.join(DATA_ROOT, "masks", f"{name_base}.png")
         p_agnostic = os.path.join(DATA_ROOT, "agnostic", filename)
         p_cloth = os.path.join(DATA_ROOT, "ref_cloth", filename)
+        p_cloth_mask = os.path.join(DATA_ROOT, "ref_cloth_mask", f"{name_base}.png")
+        p_pose = os.path.join(DATA_ROOT, "pose_img", f"{name_base}_keypoints.png")
 
-        # Check for Pose Image (Try both naming conventions)
-        p_pose_1 = os.path.join(DATA_ROOT, "pose_img", f"{name_base}.png")
-        p_pose_2 = os.path.join(DATA_ROOT, "pose_img", f"{name_base}_keypoints.png")
-
-        has_pose = os.path.exists(p_pose_1) or os.path.exists(p_pose_2)
-
-        # DEBUG CHECK
         missing = []
         if not os.path.exists(p_mask): missing.append("Mask")
         if not os.path.exists(p_agnostic): missing.append("Agnostic")
         if not os.path.exists(p_cloth): missing.append("Cloth")
-        if not has_pose: missing.append("Pose_Img")
+        if not os.path.exists(p_cloth_mask): missing.append("Cloth Mask")
+        if not os.path.exists(p_pose): missing.append("Pose IMG")
 
         if len(missing) == 0:
             valid_names.append(filename)
-
-            # Create Cloth Mask (Only for valid pairs)
-            cloth_mask_dir = os.path.join(DATA_ROOT, "cloth_mask")
-            os.makedirs(cloth_mask_dir, exist_ok=True)
-            cm_path = os.path.join(cloth_mask_dir, filename)
-
-            if not os.path.exists(cm_path):
-                cloth_img = cv2.imread(p_cloth)
-                if cloth_img is not None:
-                    diff = cv2.absdiff(cloth_img, (128, 128, 128))
-                    mask = np.sum(diff, axis=2)
-                    _, cloth_mask = cv2.threshold(mask, 5, 255, cv2.THRESH_BINARY)
-                    cv2.imwrite(cm_path, cloth_mask)
         else:
             missing_log.append(f"{filename}: Missing {missing}")
 
