@@ -3,8 +3,8 @@ import os
 import cv2
 import numpy as np
 
-input_folder = r"../our dataset/openpose-json/"
-output_folder = r"../our dataset/openpose-skeleton/"
+input_folder = r"../dataset_mfp_final_1/openpose-json/"
+output_folder = r"../dataset_mfp_final_1/openpose-skeleton/"
 os.makedirs(output_folder, exist_ok=True)
 
 skeleton = [

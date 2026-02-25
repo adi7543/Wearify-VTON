@@ -8,10 +8,10 @@ openpose_exe = os.path.join(openpose_root, "bin/OpenPoseDemo.exe")
 
 openpose_model_folder = os.path.join(openpose_root, "models/")
 
-input_images = r"../dataset_mfp_final_2/images"
+input_images = r"../dataset_mfp_final/images"
 
-output_json = r"../dataset_mfp_final_2/openpose-json/"
-output_images = r"../dataset_mfp_final_2/openpose-img/"
+output_json = r"../dataset_mfp_final/openpose-json/"
+output_images = r"../dataset_mfp_final/openpose-img/"
 os.makedirs(output_json, exist_ok=True)
 os.makedirs(output_images, exist_ok=True)
 
@@ -20,20 +20,19 @@ print(f"Input folder: {input_images}")
 print(f"JSON output: {output_json}")
 
 # --- 3. BUILD THE COMMAND ---
-# We've added the --model_folder argument
 command = [
     openpose_exe,
     "--image_dir", input_images,
     "--write_json", output_json,
     "--write_images", output_images,
-    "--model_folder", openpose_model_folder,  # <-- HERE IS THE FIX
-    "--display", "0"  # Disables the pop-up GUI window
+    "--model_folder", openpose_model_folder,
+    "--display", "0"
 ]
 
 # --- 4. RUN THE COMMAND ---
 try:
     print("\nRunning command:")
-    print(" ".join(command))  # Print the command so you can see it
+    print(" ".join(command))
 
     subprocess.run(command, check=True)
 
@@ -47,4 +46,3 @@ except subprocess.CalledProcessError as e:
 except FileNotFoundError:
     print(f"\n--- ERROR: Could not find 'OpenPoseDemo.exe' ---")
     print(f"Please check your 'openpose_exe' path: {openpose_exe}")
-    print("Ensure the script is in your main 'vton-project' folder.")

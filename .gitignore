@@ -60,3 +60,5 @@ Thumbs.db
 /training/
 /utils/
 /visualizations/
+/my_custom_segformer/
+/my_custom_segformer_v2/

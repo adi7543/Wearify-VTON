@@ -6,7 +6,7 @@ from segment_anything import sam_model_registry, SamPredictor
 
 # --- CONFIGURATION ---
 INPUT_DIR = r"../dataset_manual/images_to_fix"  # Your images
-OUTPUT_DIR = r"../dataset_manual_1/fixed"  # Where to save results
+OUTPUT_DIR = r"../dataset_manual/fixed"  # Where to save results
 IMG_SIZE = (512, 512)  # Standard VTON resolution
 
 # Path to SAM Checkpoint

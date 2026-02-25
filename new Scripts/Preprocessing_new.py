@@ -7,100 +7,94 @@ from transformers import SegformerImageProcessor, SegformerForSemanticSegmentati
 from tqdm import tqdm
 
 # --- CONFIGURATION ---
-# 1. Your New V2 Model (The one that produced the red/yellow heatmap)
-MODEL_PATH = r"../my_custom_segformer_v3"
-
-# 2. Your Raw Images (The folder with 1000+ photos)
+MODEL_PATH = r"../my_custom_segformer_v4"
 INPUT_DIR = r"../data/images"
-
-# 3. Output Folder (This will be your MFP-VTON Dataset)
-OUTPUT_DIR = r"../dataset_mfp_final_2"
-
-# 4. Resolution
+OUTPUT_DIR = r"../dataset_final"
 IMG_SIZE = (512, 512)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# --- TUNING PARAMETERS ---
+SHIFT_X = -1      # Shift Left/Right (User setting)
+THRESHOLD = 0.90  # Keep high to kill webbing
+DILATION = 1      # <--- CHANGED: Expand mask by 2 pixels to cover edges
 
 def setup_dirs():
-    # Create the 5 necessary folders
-    for d in ["images", "masks", "agnostic", "ref_person", "vis"]:
+    subdirs = ["images", "masks", "agnostic", "ref_person", "vis"]
+    for d in subdirs:
         os.makedirs(os.path.join(OUTPUT_DIR, d), exist_ok=True)
-
 
 def main():
     setup_dirs()
-    print(f"--- Generating Full Dataset with V3 Model on {DEVICE} ---")
+    print(f"--- SURGICAL GENERATION (V4 + EXPANSION) ---")
+    print(f"Shift X: {SHIFT_X}px | Threshold: {THRESHOLD} | Dilation: {DILATION}px")
 
-    # 1. Load Model & Processor
-    # CRITICAL FIX: Load Processor from NVIDIA, Model from Local
     try:
         processor = SegformerImageProcessor.from_pretrained("nvidia/mit-b0")
         model = SegformerForSemanticSegmentation.from_pretrained(MODEL_PATH).to(DEVICE)
         model.eval()
-        print("Model loaded successfully.")
     except Exception as e:
-        print(f"Error loading model: {e}")
-        print("Did you run train_segmentation_v2.py fully?")
+        print(f"Error loading V4: {e}")
         return
 
     files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
-    print(f"Found {len(files)} images. Starting processing...")
 
     for filename in tqdm(files):
         try:
-            # A. Load Image
+            # Load
             src_path = os.path.join(INPUT_DIR, filename)
             image_pil = Image.open(src_path).convert("RGB")
             image_pil = image_pil.resize(IMG_SIZE, Image.BILINEAR)
             image_np = np.array(image_pil)
 
-            # B. Predict (Inference)
+            # Predict
             inputs = processor(images=image_pil, return_tensors="pt").to(DEVICE)
             with torch.no_grad():
                 outputs = model(**inputs)
                 logits = outputs.logits
 
-            # Upsample logic
+            # Upsample
             logits = torch.nn.functional.interpolate(logits, size=IMG_SIZE[::-1], mode="bilinear", align_corners=False)
             probs = torch.nn.functional.softmax(logits, dim=1)
 
-            # C. Create Mask (Thresholding)
-            # We use a safe threshold of 0.5.
-            # Since V2 uses class weights, the model should be very confident (probs > 0.9).
-            kurta_prob = probs[0, 1].cpu().numpy()
-            mask = (kurta_prob > 0.5).astype(np.uint8) * 255
+            # 1. High Confidence Threshold (Kills webbing)
+            mask = (probs[0, 1].cpu().numpy() > THRESHOLD).astype(np.uint8) * 255
 
-            # D. Clean Up (Morphology)
-            # Remove small white noise specs
-            kernel = np.ones((5, 5), np.uint8)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            # 2. Manual Shift
+            if SHIFT_X != 0:
+                M = np.float32([[1, 0, SHIFT_X], [0, 1, 0]])
+                mask = cv2.warpAffine(mask, M, (IMG_SIZE[1], IMG_SIZE[0]))
 
-            # E. Generate Outputs
-            # 1. Agnostic (Grey Hole)
+            # 3. EXPANSION (Dilation) INSTEAD OF EROSION
+            if DILATION > 0:
+                # A 3x3 kernel expands by ~1 pixel per iteration.
+                # A 5x5 kernel expands by ~2 pixels.
+                kernel = np.ones((3, 3), np.uint8)
+                mask = cv2.dilate(mask, kernel, iterations=DILATION)
+
+            # Cleanup Small Noise
+            num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+            for i in range(1, num_labels):
+                if stats[i, cv2.CC_STAT_AREA] < 100:
+                    mask[labels == i] = 0
+
+            # Save
             agnostic = image_np.copy()
             agnostic[mask == 255] = 128
 
-            # 2. Visualization (Green Overlay)
             vis = image_np.copy()
             vis[mask == 255] = vis[mask == 255] * 0.5 + np.array([0, 255, 0]) * 0.5
 
-            # F. Save Files (BGR for OpenCV)
             name_base = os.path.splitext(filename)[0]
-
             cv2.imwrite(os.path.join(OUTPUT_DIR, "images", filename), cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_person", filename),
-                        cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))  # Source = Target for training
+            cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_person", filename), cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
             cv2.imwrite(os.path.join(OUTPUT_DIR, "agnostic", filename), cv2.cvtColor(agnostic, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(os.path.join(OUTPUT_DIR, "vis", filename), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
             cv2.imwrite(os.path.join(OUTPUT_DIR, "masks", f"{name_base}.png"), mask)
+            cv2.imwrite(os.path.join(OUTPUT_DIR, "vis", filename), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
 
         except Exception as e:
             print(f"Skipping {filename}: {e}")
-            continue
 
-    print(f"Done! Check the '{OUTPUT_DIR}/vis' folder.")
-    print("If the green masks look correct, you are ready to train MFP-VTON!")
-
+    print(f"\nSUCCESS! Masks expanded by {DILATION} iterations.")
 
 if __name__ == "__main__":
     main()

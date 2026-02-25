@@ -4,8 +4,8 @@ import numpy as np
 from tqdm import tqdm
 
 # --- CONFIGURATION ---
-DATASET_DIR = r"../dataset_mfp_final_1"
-EROSION_AMOUNT = 2
+DATASET_DIR = r"../dataset_final"
+EROSION_AMOUNT = 3
 
 
 def main():
