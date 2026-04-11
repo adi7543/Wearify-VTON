@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 # --- CONFIGURATION ---
 MODEL_PATH = r"../my_custom_segformer_v4"
-INPUT_DIR = r"../data/images"
-OUTPUT_DIR = r"../dataset_final"
+INPUT_DIR = r"../data/images_resized"
+OUTPUT_DIR = r"../dataset_new"
 IMG_SIZE = (512, 512)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -19,7 +19,7 @@ THRESHOLD = 0.90  # Keep high to kill webbing
 DILATION = 1      # <--- CHANGED: Expand mask by 2 pixels to cover edges
 
 def setup_dirs():
-    subdirs = ["images", "masks", "agnostic", "ref_person", "vis"]
+    subdirs = ["images", "ref_cloth_masks", "vis"]
     for d in subdirs:
         os.makedirs(os.path.join(OUTPUT_DIR, d), exist_ok=True)
 
@@ -78,17 +78,17 @@ def main():
                     mask[labels == i] = 0
 
             # Save
-            agnostic = image_np.copy()
-            agnostic[mask == 255] = 128
+            # agnostic = image_np.copy()
+            # agnostic[mask == 255] = 128
 
             vis = image_np.copy()
             vis[mask == 255] = vis[mask == 255] * 0.5 + np.array([0, 255, 0]) * 0.5
 
             name_base = os.path.splitext(filename)[0]
             cv2.imwrite(os.path.join(OUTPUT_DIR, "images", filename), cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_person", filename), cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(os.path.join(OUTPUT_DIR, "agnostic", filename), cv2.cvtColor(agnostic, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(os.path.join(OUTPUT_DIR, "masks", f"{name_base}.png"), mask)
+            # cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_person", filename), cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
+            # cv2.imwrite(os.path.join(OUTPUT_DIR, "agnostic", filename), cv2.cvtColor(agnostic, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_cloth_masks", f"{name_base}.png"), mask)
             cv2.imwrite(os.path.join(OUTPUT_DIR, "vis", filename), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
 
         except Exception as e:

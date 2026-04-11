@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 
 # --- CONFIGURATION ---
-DATASET_DIR = r"../dataset_final"
+DATASET_DIR = r"../dataset_new"
 EROSION_AMOUNT = 3
 
 
@@ -12,13 +12,13 @@ def main():
     # 1. Setup Folders
     dirs = {
         "images": os.path.join(DATASET_DIR, "images"),
-        "masks": os.path.join(DATASET_DIR, "masks"),
-        "ref_cloth": os.path.join(DATASET_DIR, "ref_cloth"),
-        "ref_cloth_mask": os.path.join(DATASET_DIR, "ref_cloth_mask")
+        "masks": os.path.join(DATASET_DIR, "ref_cloth_masks"),
+        "ref_cloth": os.path.join(DATASET_DIR, "garments"),
+        # "ref_cloth_mask": os.path.join(DATASET_DIR, "ref_cloth_mask")
     }
 
-    os.makedirs(dirs["ref_cloth"], exist_ok=True)
-    os.makedirs(dirs["ref_cloth_mask"], exist_ok=True)
+    os.makedirs(dirs["garments"], exist_ok=True)
+    # os.makedirs(dirs["ref_cloth_mask"], exist_ok=True)
 
     files = [f for f in os.listdir(dirs["images"]) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
 
@@ -59,12 +59,12 @@ def main():
 
         # --- SAVE ---
         # Save Cloth
-        cv2.imwrite(os.path.join(dirs["ref_cloth"], filename), ref_cloth)
+        cv2.imwrite(os.path.join(dirs["garments"], filename), ref_cloth)
 
         # Save Cloth Mask (The eroded one)
-        cv2.imwrite(os.path.join(dirs["ref_cloth_mask"], f"{name_base}.png"), clean_mask)
+        # cv2.imwrite(os.path.join(dirs["ref_cloth_mask"], f"{name_base}.png"), clean_mask)
 
-    print("Done! Check 'dataset_mfp_final/ref_cloth'. The hands should be gone.")
+    print("Done!")
 
 
 if __name__ == "__main__":
