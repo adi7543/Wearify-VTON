@@ -1,8 +1,8 @@
 import os
 
 # -------- CONFIGURATION --------
-FOLDER_PATH = r"../our dataset/agnostic/"
-START_NUMBER = 1
+FOLDER_PATH = r"../data/images_resized"
+START_NUMBER = 5831
 ZERO_PADDING = 1   # 001, 002, 003
 # --------------------------------
 

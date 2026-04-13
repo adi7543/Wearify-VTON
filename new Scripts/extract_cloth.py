@@ -13,7 +13,7 @@ def main():
     dirs = {
         "images": os.path.join(DATASET_DIR, "images"),
         "masks": os.path.join(DATASET_DIR, "ref_cloth_masks"),
-        "ref_cloth": os.path.join(DATASET_DIR, "garments"),
+        "garments": os.path.join(DATASET_DIR, "garments"),
         # "ref_cloth_mask": os.path.join(DATASET_DIR, "ref_cloth_mask")
     }
 

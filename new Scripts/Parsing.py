@@ -1,30 +1,3 @@
-# import sys
-# import os
-# import numpy as np
-# from PIL import Image
-# import torch
-#
-#
-#
-# # ==========================================
-# # 0. THE FORCE-LOAD FIX
-# # ==========================================
-# import nvidia.cudnn as cudnn
-# import nvidia.cuda_runtime as cuda_runtime
-#
-# cudnn_lib = cudnn.__path__[0]
-# cuda_bin = os.path.join(cuda_runtime.__path__[0], "bin")
-#
-# if hasattr(os, 'add_dll_directory'):
-#     if os.path.exists(cudnn_lib):
-#         os.add_dll_directory(cudnn_lib)
-#     if os.path.exists(cuda_bin):
-#         os.add_dll_directory(cuda_bin)
-#
-# os.environ["PATH"] = cudnn_lib + os.pathsep + cuda_bin + os.pathsep + os.environ.get("PATH", "")
-# print(f"cuDNN path: {cudnn_lib}")
-# print(f"CUDA bin path: {cuda_bin}")
-
 import os, sys
 
 # Add ALL CUDA 11.8 DLL locations
@@ -42,10 +15,6 @@ for dll_path in [CUDA_118_BIN, CUDNN_BIN, CUDA_RT_BIN]:
 
 # Remove any CUDA 12 path interference
 os.environ["CUDA_PATH"] = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"
-
-
-
-
 
 
 import os
@@ -69,79 +38,12 @@ if hasattr(os, 'add_dll_directory'):
 os.environ["PATH"] = cudnn_lib + os.pathsep + cuda_bin + os.pathsep + os.environ.get("PATH", "")
 os.environ["CUDA_PATH"] = os.path.dirname(cuda_bin)  # override wrong CUDA_PATH
 
-# ==========================================
-# NOW safe to import everything else
-# ==========================================
+
 import numpy as np
 from PIL import Image
-import torch
-
-
-
-
-
-
-
-
-
-
-# # ==========================================
-# # 0. THE FORCE-LOAD FIX
-# # ==========================================
-# import nvidia.cudnn as cudnn
-# import nvidia.cuda_runtime as cuda_runtime
-#
-# # This finds the actual folder containing the .dll files
-# cudnn_lib = os.path.join(os.path.dirname(cudnn.__file__), "lib")
-# cuda_bin = os.path.join(os.path.dirname(cuda_runtime.__file__), "bin")
-#
-# # Add to the DLL search path
-# if hasattr(os, 'add_dll_directory'):
-#     os.add_dll_directory(cudnn_lib)
-#     os.add_dll_directory(cuda_bin)
-#
-# # Add to the system PATH for this specific terminal window
-# os.environ["PATH"] = cudnn_lib + os.pathsep + cuda_bin + os.pathsep + os.environ.get("PATH", "")
-#
-# # Check if the file actually exists (Sanity Check)
-# dll_check = os.path.join(cuda_bin, "cudart64_12.dll")
-# if os.path.exists(dll_check):
-#     print(f"Found CUDA DLL at: {dll_check}")
-# else:
-#     print("WARNING: Could not find cudart64_12.dll in the expected folder!")
-
-
-# # ==========================================
-# # 0. THE DEFINITIVE CUDA DLL LINK
-# # ==========================================
-# def link_cuda_libs():
-#     try:
-#         import nvidia.cudnn as cudnn
-#         import nvidia.cuda_runtime as cuda_runtime
-#
-#         # Paths to the newly installed nvidia libraries
-#         cudnn_lib_path = os.path.join(os.path.dirname(cudnn.__file__), 'lib')
-#         cuda_bin_path = os.path.join(os.path.dirname(cuda_runtime.__file__), 'bin')
-#
-#         # Add to Windows DLL Search Path
-#         if hasattr(os, 'add_dll_directory'):
-#             if os.path.exists(cudnn_lib_path):
-#                 os.add_dll_directory(cudnn_lib_path)
-#             if os.path.exists(cuda_bin_path):
-#                 os.add_dll_directory(cuda_bin_path)
-#
-#         # Also update System PATH environment variable for this session
-#         os.environ["PATH"] = cudnn_lib_path + os.pathsep + cuda_bin_path + os.pathsep + os.environ.get("PATH", "")
-#         print("Successfully linked NVIDIA libraries.")
-#     except Exception as e:
-#         print(f"Warning: Could not link NVIDIA libraries: {e}")
-#
-#
-# link_cuda_libs()
-
 
 # ==========================================
-# 1. PATH SETUP (Making it unbreakable)
+# 1. PATH SETUP
 # ==========================================
 # Get the exact folder where this script lives ("new Scripts")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -160,10 +62,6 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ==========================================
 try:
     from run_parsing import Parsing  # type: ignore
-# except ModuleNotFoundError:
-#     print("\n[ERROR] Could not find run_parsing.py.")
-#     print(f"Looked in: {os.path.abspath(PARSER_PATH)}")
-#     sys.exit(1)
 
 except Exception as e:
     print(f"\n[ERROR] Import failed: {e}")
