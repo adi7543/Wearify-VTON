@@ -14,11 +14,9 @@ def main():
         "images": os.path.join(DATASET_DIR, "images"),
         "masks": os.path.join(DATASET_DIR, "ref_cloth_masks"),
         "garments": os.path.join(DATASET_DIR, "garments"),
-        # "ref_cloth_mask": os.path.join(DATASET_DIR, "ref_cloth_mask")
     }
 
     os.makedirs(dirs["garments"], exist_ok=True)
-    # os.makedirs(dirs["ref_cloth_mask"], exist_ok=True)
 
     files = [f for f in os.listdir(dirs["images"]) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
 
@@ -44,7 +42,6 @@ def main():
         if mask.shape[:2] != image.shape[:2]:
             mask = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-        # --- THE FIX: EROSION (Trimming) ---
         # We shrink the white area of the mask.
         # This disconnects the sleeve from the hand.
         kernel = np.ones((EROSION_AMOUNT, EROSION_AMOUNT), np.uint8)
@@ -60,9 +57,6 @@ def main():
         # --- SAVE ---
         # Save Cloth
         cv2.imwrite(os.path.join(dirs["garments"], filename), ref_cloth)
-
-        # Save Cloth Mask (The eroded one)
-        # cv2.imwrite(os.path.join(dirs["ref_cloth_mask"], f"{name_base}.png"), clean_mask)
 
     print("Done!")
 

@@ -7,10 +7,10 @@ from tqdm import tqdm
 # ================= CONFIGURATION =================
 INPUT_DIR = r"../data/images"
 
-OUTPUT_DIR = r"../raw_data/augmented"
+OUTPUT_DIR = r"../data/raw_images"
 
 # 3. How many images to generate
-NUM_TO_AUGMENT = 1500
+NUM_TO_AUGMENT = 232
 
 # 4. Augmentation Settings: Light Jitter
 # We keep it subtle (0.1 - 0.2) to simulate lighting changes.
