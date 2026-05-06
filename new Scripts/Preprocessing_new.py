@@ -14,12 +14,12 @@ IMG_SIZE = (512, 512)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # --- TUNING PARAMETERS ---
-SHIFT_X = -1      # Shift Left/Right (User setting)
-THRESHOLD = 0.90  # Keep high to kill webbing
-DILATION = 1      # <--- CHANGED: Expand mask by 2 pixels to cover edges
+SHIFT_X = -1
+THRESHOLD = 0.90
+DILATION = 1
 
 def setup_dirs():
-    subdirs = ["images", "ref_cloth_masks", "vis"]
+    subdirs = ["images", "ref_cloth_masks"]
     for d in subdirs:
         os.makedirs(os.path.join(OUTPUT_DIR, d), exist_ok=True)
 
@@ -89,7 +89,7 @@ def main():
             # cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_person", filename), cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR))
             # cv2.imwrite(os.path.join(OUTPUT_DIR, "agnostic", filename), cv2.cvtColor(agnostic, cv2.COLOR_RGB2BGR))
             cv2.imwrite(os.path.join(OUTPUT_DIR, "ref_cloth_masks", f"{name_base}.png"), mask)
-            cv2.imwrite(os.path.join(OUTPUT_DIR, "vis", filename), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
+            # cv2.imwrite(os.path.join(OUTPUT_DIR, "vis", filename), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
 
         except Exception as e:
             print(f"Skipping {filename}: {e}")
