@@ -1,4 +1,4 @@
-# Wearify 👗
+# Wearify
 
 **Wearify** is a virtual try-on (VTON) system for South Asian garments (kurta, sherwani) built on top of [CatVTON](https://github.com/Zheng-Chong/CatVTON), a diffusion-based garment try-on model. It wraps a full data preprocessing pipeline, custom model fine-tuning, and a geometry-aware inference engine — designed specifically for the proportions and styles of Eastern wear.
 
@@ -11,9 +11,9 @@
   - **Case A** (target garment shorter) — SD inpainting fills the gap with trouser fabric
   - **Case B** (target garment longer) — grey-fill extension and natural-proportion cloth scaling
 - **Identity preservation** — GroundingDINO + SAM composites the original hands, face, and neck back onto the result
-- **Custom garment segmentation** — SegFormer (mit-b0) fine-tuned specifically on kurta/sherwani to generate garment masks
+- **Custom garment segmentation** — SegFormer fine-tuned specifically on kurta/sherwani to generate garment masks
 - **Human parsing** — OOTDiffusion's ONNX humanparser for body region labeling
-- **Full dataset pipeline** — image scaling, augmentation, segmentation, garment extraction, and dataset splitting all included
+- **Full dataset pipeline** — image scaling, segmentation, garment extraction, and dataset splitting all included
 
 ---
 
@@ -24,9 +24,6 @@ Raw Person Images
        │
        ▼
 Image Scaling (512×512 padded)    ← image_scaling.py
-       │
-       ▼
-Data Augmentation (color jitter)  ← data_augmentation.py
        │
        ├──────────────────────────────────────┐
        ▼                                      ▼
@@ -102,7 +99,7 @@ The base checkpoint (`nvidia/mit-b0`) is downloaded automatically. To fine-tune 
 python my_segformer.py
 ```
 This trains a binary segmenter (background vs. kurta) with 10× class weight on the garment.
-Trained model saved to: `my_custom_segformer_v5/`
+Trained model saved to: `my_custom_segformer_v4/`
 
 Run preprocessing to generate masks:
 ```bash
@@ -137,7 +134,7 @@ Run identity mask extraction:
 ```bash
 python SAM_hands.py
 ```
-Detects face, hands, and neck. Applies area-based filtering to prevent runaway full-body masks.
+Detects face, hands, and neck.
 
 Expected output:
 ```
@@ -154,7 +151,6 @@ dataset_final/
 ├── agnostic/            # Agnostic images (clothing region greyed out)
 ├── agnostic_mask/       # Inpaint masks
 │   ├── 11_inpaint_mask.png   ← used for training/inference
-│   └── 11_mask.png           ← composite mask (optional)
 └── garments/            # White-background garment images
 ```
 
@@ -196,7 +192,7 @@ Visualizations generated every 3 epochs to `catvton_finetuned_v4/visualizations/
 python CATvton_inference.py
 ```
 
-Configure the paths at the top of the script for single-image or batch mode.
+Configure the paths for single-image or batch mode.
 
 **Single image:**
 ```python
@@ -238,9 +234,9 @@ Tested with:
 
 | Dependency | Version |
 |---|---|
-| Python | 3.10 |
+| Python | 3.12 |
 | PyTorch | 2.x |
-| CUDA | 11.8 |
+| CUDA | 12 |
 | cuDNN | via `nvidia-cudnn` package |
 | ONNX Runtime | 1.16.x (GPU) |
 
@@ -270,19 +266,3 @@ wearify/
 ├── filter_images.py         # Retrieve originals for bad-mask correction
 └── README.md
 ```
-
----
-
-## Acknowledgements
-
-- [CatVTON](https://github.com/Zheng-Chong/CatVTON) — the underlying virtual try-on diffusion model
-- [OOTDiffusion](https://github.com/levihsu/OOTDiffusion) — humanparsing ONNX pipeline
-- [GroundingDINO](https://github.com/IDEA-Research/GroundingDINO) — open-vocabulary detection
-- [Segment Anything (SAM)](https://github.com/facebookresearch/segment-anything) — pixel-level segmentation
-- [Stable Diffusion](https://github.com/CompVis/stable-diffusion) — diffusion backbone
-
----
-
-## License
-
-This project is for research and personal use. Refer to each upstream repository for their respective licensing terms.
