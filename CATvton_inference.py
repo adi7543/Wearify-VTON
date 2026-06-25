@@ -1,6 +1,6 @@
 import os
 import sys
-import cv2 as _cv2
+import cv2 as cv2
 
 # Set HuggingFace cache path
 os.environ["HF_HUB_CACHE"] = r"D:\.cache\huggingface\hub"
@@ -30,7 +30,7 @@ DATASET_DIR = "../dataset_final"
 BASE_MODEL = "runwayml/stable-diffusion-inpainting"
 VAE_MODEL = "stabilityai/sd-vae-ft-mse"
 OUTPUT_DIR = "catvton_finetuned_v4"
-EPOCH = 20
+EPOCH = 21
 
 IMG_HEIGHT = 512
 IMG_WIDTH = 512
@@ -137,6 +137,23 @@ def load_catvton_attn_weights(unet, ckpt_path, version="mix"):
     return unet
 
 
+from peft.tuners.lora import LoraLayer
+def apply_selective_lora_scale(unet, spatial_scale=0.2, texture_scale=1.2):
+    """
+    Zero out LoRA on spatial attention (to_q, to_k) — restores base model pose following.
+    Keep LoRA on texture attention (to_v, to_out) — preserves South Asian garment quality.
+    """
+    for name, module in unet.named_modules():
+        if isinstance(module, LoraLayer):
+            for adapter_name in module.scaling:
+                if any(k in name for k in ["to_q", "to_k"]):
+                    module.scaling[adapter_name] = spatial_scale
+                    print(f"  spatial zeroed : {name}")
+                elif any(k in name for k in ["to_v", "to_out"]):
+                    module.scaling[adapter_name] = texture_scale
+                    print(f"  texture kept   : {name}")
+
+
 def load_models(epoch=EPOCH):
     print(f"Loading models (epoch {epoch}) …")
 
@@ -159,6 +176,9 @@ def load_models(epoch=EPOCH):
     unet.requires_grad_(False)
     print(f"  LoRA loaded : {lora_path}")
 
+    apply_selective_lora_scale(unet, spatial_scale=0.2, texture_scale=1.2)
+    print("  LoRA: spatial attention (to_q/to_k) zeroed, texture (to_v/to_out) active")
+
     print("Models loaded.\n")
     return vae, unet, scheduler
 
@@ -168,7 +188,7 @@ def load_models(epoch=EPOCH):
 # ==============================
 def preprocess_image(pil_img, height, width):
     """Resize and normalize image to [-1, 1] tensor."""
-    pil_img = pil_img.resize((width, height), Image.LANCZOS)
+    pil_img = pil_img.resize((width, height), Image.BILINEAR)
     t = transforms.ToTensor()(pil_img)
     t = transforms.Normalize([0.5] * 3, [0.5] * 3)(t)
     return t.unsqueeze(0)
@@ -185,56 +205,10 @@ def tensor_to_pil(t):
     return transforms.ToPILImage()((t * 0.5 + 0.5).clamp(0, 1).cpu())
 
 
-def preprocess_cloth_image(pil_img, height, width):
-    """
-    For cloth images — resize to fill more of the frame
-    so the model sees a larger garment and generates
-    correct length and sleeves.
-    """
-    arr = np.array(pil_img)
-    is_cloth = ~((arr[:, :, 0] > 235) & (arr[:, :, 1] > 235) & (arr[:, :, 2] > 235))
-    rows = np.any(is_cloth, axis=1)
-    cols = np.any(is_cloth, axis=0)
-    if rows.any():
-        r0 = int(np.argmax(rows));
-        r1 = len(rows) - int(np.argmax(rows[::-1]))
-        c0 = int(np.argmax(cols));
-        c1 = len(cols) - int(np.argmax(cols[::-1]))
-        cloth_crop = pil_img.crop((c0, r0, c1, r1))
-    else:
-        cloth_crop = pil_img
-
-    cw, ch = cloth_crop.size
-    scale = (height * 0.90) / ch
-    new_w = int(cw * scale)
-    new_h = int(ch * scale)
-    if new_w > width * 0.95:
-        scale = (width * 0.95) / cw
-        new_w = int(cw * scale)
-        new_h = int(ch * scale)
-
-    resized = cloth_crop.resize((new_w, new_h), Image.LANCZOS)
-    canvas = Image.new("RGB", (width, height), (255, 255, 255))
-    ox = (width - new_w) // 2
-    oy = (height - new_h) // 2
-    canvas.paste(resized, (ox, oy))
-
-    t = transforms.ToTensor()(canvas)
-    t = transforms.Normalize([0.5] * 3, [0.5] * 3)(t)
-    return t.unsqueeze(0)
-
-
-import os
-import cv2
-import torch
-import numpy as np
-import torch.nn.functional as F
-from PIL import Image, ImageDraw, ImageFont
-
 # ==============================
 # CONSTANTS
 # ==============================
-GREY_OVERLAP_PX = 20
+GREY_OVERLAP_PX = 10
 GREY = (128, 128, 128)  # RGB
 
 
@@ -277,7 +251,7 @@ def composite_hands(result_img_rgb, person_img_rgb, identity_mask_path):
             interpolation=cv2.INTER_NEAREST
         )
 
-    identity_mask_blur = cv2.GaussianBlur(identity_mask, (11, 11), 0)
+    identity_mask_blur = cv2.GaussianBlur(identity_mask, (5, 5), 0)
     alpha = identity_mask_blur.astype(np.float32) / 255.0
     alpha = np.stack([alpha, alpha, alpha], axis=-1)
 
@@ -286,7 +260,6 @@ def composite_hands(result_img_rgb, person_img_rgb, identity_mask_path):
 
     composited = person_float * alpha + result_float * (1.0 - alpha)
     return composited.astype(np.uint8)
-
 
 # ==============================
 # HELPER: SUBTRACT HAND REGION FROM VTON MASK
@@ -317,39 +290,6 @@ def subtract_hands_from_mask(mask_np, identity_mask_path):
     return result
 
 
-def preprocess_cloth_pil(pil_img, height, width, scale=0.65):
-    arr = np.array(pil_img)
-    is_cloth = ~((arr[:, :, 0] > 235) & (arr[:, :, 1] > 235) & (arr[:, :, 2] > 235))
-    rows = np.any(is_cloth, axis=1)
-    cols = np.any(is_cloth, axis=0)
-    if rows.any():
-        r0 = int(np.argmax(rows));     r1 = len(rows) - int(np.argmax(rows[::-1]))
-        c0 = int(np.argmax(cols));     c1 = len(cols) - int(np.argmax(cols[::-1]))
-        pil_img = pil_img.crop((c0, r0, c1, r1))
-
-    cw, ch = pil_img.size
-    # Always force to exactly scale% of the frame
-    target_h = int(height * scale)
-    target_w = int(width  * scale)
-    r = min(target_w / cw, target_h / ch)  # preserve aspect ratio
-    new_w = int(cw * r)
-    new_h = int(ch * r)
-
-    resized = pil_img.resize((new_w, new_h), Image.LANCZOS)
-    canvas = Image.new("RGB", (width, height), (255, 255, 255))
-    ox = (width  - new_w) // 2
-    oy = (height - new_h) // 2
-    canvas.paste(resized, (ox, oy))
-
-    t = transforms.ToTensor()(canvas)
-    t = transforms.Normalize([0.5] * 3, [0.5] * 3)(t)
-    return t.unsqueeze(0)
-
-
-# ==============================
-# MAIN INFERENCE
-# ==============================
-
 @torch.no_grad()
 def run_inference(
         person_path, cloth_path, mask_path, agnostic_path, output_path,
@@ -357,46 +297,45 @@ def run_inference(
         save_grid=True,
 ):
     # ==============================
-    # DEBUG HELPER SETUP
+    # DEBUG SETUP
     # ==============================
     debug_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), "debug")
     os.makedirs(debug_dir, exist_ok=True)
-    debug_step = 0
+    _step = [0]
 
-    def save_debug(img_data, name):
-        """Helper to save intermediate PIL images or NumPy arrays."""
-        nonlocal debug_step
-        debug_step += 1
-        filename = f"{debug_step:02d}_{name}.png"
-        filepath = os.path.join(debug_dir, filename)
-
+    def dbg(img_data, name):
+        _step[0] += 1
+        fname = f"{_step[0]:02d}_{name}.png"
+        fpath = os.path.join(debug_dir, fname)
         if isinstance(img_data, np.ndarray):
-            # If it's a 2D array, treat as grayscale mask
-            if len(img_data.shape) == 2:
-                img = Image.fromarray(img_data.astype(np.uint8), mode='L')
+            if img_data.ndim == 2:
+                Image.fromarray(img_data.astype(np.uint8), mode='L').save(fpath)
             else:
-                img = Image.fromarray(img_data.astype(np.uint8))
+                Image.fromarray(img_data.astype(np.uint8)).save(fpath)
+        elif isinstance(img_data, torch.Tensor):
+            # assume latent — normalize to [0,1] for visibility
+            t = img_data.float().cpu()
+            t = (t - t.min()) / (t.max() - t.min() + 1e-8)
+            if t.ndim == 4: t = t[0]
+            # average channels if >3
+            if t.shape[0] > 3: t = t[:3]
+            transforms.ToPILImage()(t).save(fpath)
         else:
-            img = img_data.copy()
-
-        img.save(filepath)
-        print(f"  [Debug] Saved -> {filename}")
+            img_data.save(fpath)
+        print(f"  [DBG {_step[0]:02d}] {name} → {fname}")
 
     # ==============================
-    # INITIAL INPUTS
+    # LOAD INPUTS
     # ==============================
     person_pil_original = Image.open(person_path).convert("RGB")
-    cloth_pil = Image.open(cloth_path).convert("RGB")
-    mask_pil = Image.open(mask_path).convert("L")
-    agnostic_pil = Image.open(agnostic_path).convert("RGB")
+    cloth_pil           = Image.open(cloth_path).convert("RGB")
+    mask_pil            = Image.open(mask_path).convert("L")
+    agnostic_pil        = Image.open(agnostic_path).convert("RGB")
 
-    save_debug(person_pil_original, "inputs_person")
-    save_debug(mask_pil, "inputs_mask")
-    save_debug(agnostic_pil, "inputs_agnostic")
-
-    inpainted_person_pil = person_pil_original.copy()
-    height_diff = 0
-    use_fill_cloth_preprocess = True
+    dbg(person_pil_original,          "00_input_person")
+    dbg(cloth_pil,                     "00_input_cloth")
+    dbg(mask_pil,                      "00_input_mask")
+    dbg(agnostic_pil,                  "00_input_agnostic")
 
     # ==============================
     # PRE-FILL: GEOMETRY & AGNOSTIC EXTENSION
@@ -405,265 +344,231 @@ def run_inference(
         print("Analyzing garment geometries...")
 
         source_mask_np = np.array(mask_pil)
-        cloth_np = np.array(cloth_pil)
+        cloth_np       = np.array(cloth_pil)
 
         gray_cloth = cv2.cvtColor(cloth_np, cv2.COLOR_RGB2GRAY)
         _, target_mask_np = cv2.threshold(gray_cloth, 240, 255, cv2.THRESH_BINARY_INV)
 
+        dbg(gray_cloth,      "geo_cloth_gray")
+        dbg(target_mask_np,  "geo_target_mask_from_cloth")
+        dbg(source_mask_np,  "geo_source_mask_from_file")
+
         source_geo = get_4_points_and_height(source_mask_np)
         target_geo = get_4_points_and_height(target_mask_np)
 
+        print(f"  source_geo={source_geo}")
+        print(f"  target_geo={target_geo}")
+
         if source_geo and target_geo:
             img_width, img_height = person_pil_original.size
-            person_np = np.array(person_pil_original)
+            person_np   = np.array(person_pil_original)
             agnostic_np = np.array(agnostic_pil)
 
             if agnostic_np.shape != person_np.shape:
                 agnostic_np = cv2.resize(agnostic_np, (img_width, img_height))
 
-            shoulder_y = source_geo["shoulders"][0][1]
-            height_diff = source_geo["height"] - target_geo["height"]
+            shoulder_y    = source_geo["shoulders"][0][1]
+            height_diff   = source_geo["height"] - target_geo["height"]
             source_bottom = source_geo["y_bottom"]
             target_bottom = int(min(shoulder_y + target_geo["height"], img_height))
-            cutoff_y = target_bottom
+            cutoff_y      = target_bottom
 
             print(f"  shoulder_y={shoulder_y}, source_bottom={source_bottom}, "
                   f"target_bottom={target_bottom}, height_diff={height_diff}")
 
+            # draw geometry bounding boxes on person for debug
+            geo_vis = person_np.copy()
+            cv2.rectangle(geo_vis,
+                          (source_geo["x_left"], source_geo["shoulders"][0][1]),
+                          (source_geo["x_right"], source_geo["y_bottom"]),
+                          (0, 255, 0), 2)           # green = source (person mask)
+            cv2.line(geo_vis, (0, cutoff_y), (img_width, cutoff_y), (255, 0, 0), 2)   # blue = cutoff_y
+            cv2.line(geo_vis, (0, source_bottom), (img_width, source_bottom), (0, 0, 255), 2)  # red = source_bottom
+            dbg(geo_vis, f"geo_vis_hdiff{height_diff}")
+
             # ==========================================
-            # CASE A: Target SHORTER — SD fills the gap
-            # ========================================
+            # CASE A
+            # ==========================================
             if height_diff > 15:
                 print(f"[Case A] Target shorter by {height_diff}px. Running SD inpainting...")
 
                 from diffusers import StableDiffusionInpaintPipeline
-
                 dEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-                DTYPE = torch.float16
 
-                print("Loading SD Inpainting Pipeline into VRAM...")
                 sd = StableDiffusionInpaintPipeline.from_pretrained(
                     "runwayml/stable-diffusion-inpainting",
-                    torch_dtype=DTYPE,
-                    variant="fp16",
+                    torch_dtype=torch.float16,
                     cache_dir="D:/.cache/huggingface/hub",
                     local_files_only=True,
                     safety_checker=None,
-                    use_safetensors=False
                 ).to(dEVICE)
 
                 clean_composite = person_np.copy()
                 clean_composite[0:cutoff_y, :] = agnostic_np[0:cutoff_y, :]
-                save_debug(clean_composite, "caseA_clean_composite")  # DEBUG
-
-                # ---------------------------------------------------------
-                # 1. CREATE A MUCH TALLER, HEAVILY BLURRED MASK
-                # ---------------------------------------------------------
-                # We will expand the masked area significantly higher into the sherwani hem
-                # and slightly lower into the actual trousers to give SD room to transition fabric.
-                extended_cutoff = max(0, cutoff_y - 5)  # Larger expansion upwards
-                extended_bottom = min(img_height, source_bottom + 10)  # Slight expansion downwards
+                dbg(clean_composite, "caseA_clean_composite")
 
                 inpaint_mask = np.zeros((img_height, img_width), dtype=np.uint8)
-                inpaint_mask[extended_cutoff:extended_bottom, source_geo["x_left"]:source_geo["x_right"]] = 255
+                inpaint_mask[cutoff_y:source_bottom,
+                             source_geo["x_left"]:source_geo["x_right"]] = 255
+                dbg(inpaint_mask, "caseA_inpaint_mask_before_blur")
 
-                # Apply massive blur (use a large, odd kernel like 51x51 or even larger if needed)
-                # This creates smooth feathering rather than a harsh seam.
-                inpaint_mask = cv2.GaussianBlur(inpaint_mask, (51, 51), 0)
-
-                # CRUCIAL: Keep the upper face/body perfectly black so we don't accidentally blur
-                # anything SD might interpret as part of the new top.
-                inpaint_mask[0:extended_cutoff - 30, :] = 0  # Black out significantly higher than cutoff
-
-                save_debug(inpaint_mask, "caseA_inpaint_mask_blurred")  # DEBUG
+                inpaint_mask = cv2.GaussianBlur(inpaint_mask, (9, 9), 0)
+                inpaint_mask[0:cutoff_y, :] = 0
+                dbg(inpaint_mask, "caseA_inpaint_mask_after_blur")
 
                 torch.cuda.empty_cache()
 
-                # ---------------------------------------------------------
-                # 2. AGGRESSIVE, DYNAMIC PRE-FILL & SMOOTHING
-                # ---------------------------------------------------------
-                # By sampling the trousers dynamically and aggressively painting over the gap,
-                # we delete the sherwani embroidery completely before SD can see it.
-                sd_input_np = np.array(person_pil_original)
-
-                # Dynamically sample the average color of the actual trousers *below* the garment
-                # Sampling a slightly larger and dynamically calculated range for robustness
-                sample_y_start = min(source_bottom + 10, img_height - 1)
-                sample_y_end = min(source_bottom + 40, img_height)
-
-                trouser_color = np.mean(
-                    sd_input_np[sample_y_start:sample_y_end, source_geo["x_left"]:source_geo["x_right"]],
-                    axis=(0, 1)
-                ).astype(np.uint8)
-
-                # Paint the sampled trouser color over the *entire gap and the extended mask area*
-                # physically destroying the embroidery and gold pattern under the blurred mask.
-                sd_input_np[extended_cutoff:source_bottom, source_geo["x_left"]:source_geo["x_right"]] = trouser_color
-
-                # Add a slight blur just to the edges of our painted block for extra smoothness
-                # inside the AI input image itself.
-                block_mask = np.zeros_like(sd_input_np)
-                block_mask[extended_cutoff:source_bottom, source_geo["x_left"]:source_geo["x_right"]] = 1
-                sd_input_blurred = cv2.GaussianBlur(sd_input_np, (31, 31), 0)
-                sd_input_np = np.where(block_mask == 1, sd_input_blurred, sd_input_np)
-
-                save_debug(sd_input_np, "caseA_sd_input_prefilled_blurred")  # Check this debug image!
-                # ---------------------------------------------------------
-
-                # ---------------------------------------------------------
-                # 3. RUN INPAINTING WITH REINFORCED PROMPTS
-                # ---------------------------------------------------------
-                prompt = (
-                    "white trousers, baggy trousers, continuous fabric folds, seamless background, high quality"
-                )
-                negative_prompt = (
-                    "sherwani, embroidery, pattern, gold, brown, shirt tail, kurta, top garment, blurry, mutated, seams, hands"
-                )
-
                 inpainted_image = sd(
-                    prompt=prompt,
-                    negative_prompt=negative_prompt,
-                    image=Image.fromarray(sd_input_np),  # Use the pre-filled, slightly smoothed input image
-                    mask_image=Image.fromarray(inpaint_mask),  # Use the large, heavily blurred mask
+                    prompt="baggy trousers, shalwar, lower body clothing, continuous fabric folds, seamless background",
+                    negative_prompt="shirt tail, kurta, top garment, blurry, mutated, extra limbs, bad anatomy, artifacts, seams",
+                    image=Image.fromarray(clean_composite),
+                    mask_image=Image.fromarray(inpaint_mask),
                     num_inference_steps=25,
-                    strength=0.99  # Maximum replacement strength
+                    strength=0.99,
                 ).images[0]
-                save_debug(inpainted_image, "caseA_raw_sd_inpaint")  # DEBUG
+                dbg(inpainted_image, "caseA_sd_raw_output")
 
                 inpainted_np = np.array(inpainted_image)
-                if inpainted_np.shape[:2] != (img_height, img_width):
-                    inpainted_np = cv2.resize(inpainted_np, (img_width, img_height))
+                inpainted_np[0:cutoff_y, :] = clean_composite[0:cutoff_y, :]
+                dbg(inpainted_np, "caseA_sd_output_restored")
 
-                # inpainted_np[0:cutoff_y, :] = clean_composite[0:cutoff_y, :]
-                inpainted_np[0:cutoff_y, :] = agnostic_np[0:cutoff_y, :]
-                save_debug(inpainted_np, "caseA_stitched_inpaint")  # DEBUG
+                agnostic_with_hands = composite_hands(inpainted_np, person_np, identity_mask_path)
+                agnostic_pil = Image.fromarray(agnostic_with_hands)
+                dbg(agnostic_pil, "caseA_agnostic_after_sd")
 
-                agnostic_pil = Image.fromarray(inpainted_np)
-                inpainted_person_pil = agnostic_pil.copy()
 
                 new_mask_np = np.zeros_like(source_mask_np)
                 new_mask_np[0:cutoff_y, :] = source_mask_np[0:cutoff_y, :]
-                new_mask_np = subtract_hands_from_mask(new_mask_np, identity_mask_path)
-                save_debug(new_mask_np, "caseA_new_mask")  # DEBUG
+                dbg(new_mask_np, "caseA_new_mask_before_hand_subtract")
+
+                dbg(new_mask_np, "caseA_new_mask_final")
                 mask_pil = Image.fromarray(new_mask_np)
 
             # ==========================================
-            # CASE B: Target LONGER — grey fill extension
+            # CASE B
             # ==========================================
             else:
                 print(f"[Case B] Target longer by {abs(height_diff)}px. Applying grey fill...")
-                use_fill_cloth_preprocess = False
-                extended = agnostic_np.copy()
 
-                fill_y_start = max(0, source_bottom - GREY_OVERLAP_PX)  # Assuming GREY_OVERLAP_PX is defined
-                fill_y_end = min(target_bottom, img_height)
-                fill_x_left = source_geo["x_left"]
+                extended = agnostic_np.copy()
+                dbg(extended, "caseB_agnostic_before_fill")
+
+                fill_y_start = max(0, source_bottom - GREY_OVERLAP_PX)
+                fill_y_end   = min(target_bottom, img_height)
+                fill_x_left  = source_geo["x_left"]
                 fill_x_right = source_geo["x_right"]
 
-                print(f"  fill_y=[{fill_y_start}:{fill_y_end}], "
-                      f"fill_x=[{fill_x_left}:{fill_x_right}]")
+                print(f"  fill_y=[{fill_y_start}:{fill_y_end}], fill_x=[{fill_x_left}:{fill_x_right}]")
 
                 if fill_y_start < fill_y_end:
                     extended[fill_y_start:fill_y_end,
-                    fill_x_left:fill_x_right] = GREY  # Assuming GREY is defined
-
-                save_debug(extended, "caseB_grey_fill_extended")  # DEBUG
+                             fill_x_left:fill_x_right] = GREY
+                dbg(extended, "caseB_agnostic_after_grey_fill")
 
                 agnostic_with_hands = composite_hands(extended, person_np, identity_mask_path)
-                save_debug(agnostic_with_hands, "caseB_agnostic_with_hands")  # DEBUG
-
+                dbg(agnostic_with_hands, "caseB_agnostic_with_hands")
                 agnostic_pil = Image.fromarray(agnostic_with_hands)
 
                 new_mask_np = source_mask_np.copy()
+                dbg(new_mask_np, "caseB_mask_before_extension")
+
                 if fill_y_start < fill_y_end:
-                    new_mask_np[source_bottom:fill_y_end,
-                    fill_x_left:fill_x_right] = 255
+                    new_mask_np[fill_y_start:fill_y_end, fill_x_left:fill_x_right] = 255
+                dbg(new_mask_np, "caseB_mask_after_extension")
+
                 new_mask_np = subtract_hands_from_mask(new_mask_np, identity_mask_path)
-                save_debug(new_mask_np, "caseB_new_mask")  # DEBUG
+                dbg(new_mask_np, "caseB_mask_final")
                 mask_pil = Image.fromarray(new_mask_np)
 
     # ==============================
-    # STANDARD VTON LATENT PREP
+    # CLOTH PREPROCESSING
     # ==============================
-    person_t = preprocess_image(person_pil_original, IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
-    agnostic_t = preprocess_image(agnostic_pil, IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
-    mask_t = preprocess_mask(mask_pil, IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
-    if use_fill_cloth_preprocess:
-        # Case A (shorter target) or no geometry — scale cloth to fill frame
-        cloth_t = preprocess_cloth_image(cloth_pil, IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
-    else:
-        # Case B (longer target) — keep natural proportions
-        cloth_t = preprocess_image(cloth_pil, IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
+    cloth_preprocessed = preprocess_image(cloth_pil, IMG_HEIGHT, IMG_WIDTH)
+    cloth_vis = transforms.ToPILImage()(
+        (cloth_preprocessed[0] * 0.5 + 0.5).clamp(0, 1).cpu()
+    )
+    dbg(cloth_vis, "cloth_preprocessed_fed_to_vae")
+
+    # ==============================
+    # STANDARD CatVTON LATENT PREP
+    # ==============================
+    person_t   = preprocess_image(person_pil_original, IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
+    agnostic_t = preprocess_image(agnostic_pil,        IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
+    mask_t     = preprocess_mask(mask_pil,             IMG_HEIGHT, IMG_WIDTH).to(DEVICE, dtype=torch.float16)
+    cloth_t    = cloth_preprocessed.to(DEVICE, dtype=torch.float16)
+
+    # save what's actually going into the VAE
+    dbg(transforms.ToPILImage()((person_t[0] * 0.5 + 0.5).clamp(0,1).cpu()),   "vae_input_person")
+    dbg(transforms.ToPILImage()((agnostic_t[0] * 0.5 + 0.5).clamp(0,1).cpu()), "vae_input_agnostic")
+    dbg(transforms.ToPILImage()((mask_t[0]).clamp(0,1).cpu()),                   "vae_input_mask")
 
     with torch.amp.autocast(DEVICE):
-        person_latent = vae.encode(person_t).latent_dist.sample() * vae.config.scaling_factor
-        cloth_latent = vae.encode(cloth_t).latent_dist.sample() * vae.config.scaling_factor
+        person_latent   = vae.encode(person_t).latent_dist.sample()   * vae.config.scaling_factor
+        cloth_latent    = vae.encode(cloth_t).latent_dist.sample()    * vae.config.scaling_factor
         agnostic_latent = vae.encode(agnostic_t).latent_dist.sample() * vae.config.scaling_factor
 
-        mask_latent = F.interpolate(mask_t, size=person_latent.shape[-2:], mode="nearest").clamp(0, 1)
-        masked_latent = agnostic_latent * (mask_latent < 0.5)
+        mask_latent   = F.interpolate(mask_t, size=person_latent.shape[-2:], mode="nearest").clamp(0, 1)
+        masked_latent = agnostic_latent * (1.0 - mask_latent)
 
-        masked_concat = torch.cat([masked_latent, cloth_latent], dim=-2)
-        mask_concat = torch.cat([mask_latent, torch.zeros_like(mask_latent)], dim=-2)
-        uncond_concat = torch.cat([masked_latent, torch.zeros_like(cloth_latent)], dim=-2)
-        masked_concat_cfg = torch.cat([uncond_concat, masked_concat])
-        mask_concat_cfg = torch.cat([mask_concat] * 2)
+        dbg(cloth_latent,    "latent_cloth")
+        dbg(agnostic_latent, "latent_agnostic")
+        dbg(masked_latent,   "latent_masked_agnostic")
+        dbg(mask_latent,     "latent_mask_downsampled")
+
+        masked_concat     = torch.cat([masked_latent,  cloth_latent],                   dim=-2)
+        mask_concat       = torch.cat([mask_latent,    torch.zeros_like(mask_latent)],  dim=-2)
+        uncond_concat     = torch.cat([masked_latent,  torch.zeros_like(cloth_latent)], dim=-2)
+        masked_concat_cfg = torch.cat([uncond_concat,  masked_concat])
+        mask_concat_cfg   = torch.cat([mask_concat] * 2)
 
         generator = torch.Generator(device=torch.device(DEVICE))
         scheduler.set_timesteps(DDIM_STEPS)
         latents = randn_tensor(
             masked_concat.shape, generator=generator,
-            device=torch.device(DEVICE), dtype=masked_concat.dtype
+            device=torch.device(DEVICE), dtype=masked_concat.dtype,
         ) * scheduler.init_noise_sigma
 
         for t in scheduler.timesteps:
-            lmi = torch.cat([latents] * 2)
-            lmi = scheduler.scale_model_input(lmi, t)
-            ui = torch.cat([lmi, mask_concat_cfg, masked_concat_cfg], dim=1)
+            lmi  = torch.cat([latents] * 2)
+            lmi  = scheduler.scale_model_input(lmi, t)
+            ui   = torch.cat([lmi, mask_concat_cfg, masked_concat_cfg], dim=1)
             pred = unet(ui, t, encoder_hidden_states=None, return_dict=False)[0]
             u, c = pred.chunk(2)
             pred = u + GUIDANCE * (c - u)
             latents = scheduler.step(pred, t, latents).prev_sample
 
         result_latent = latents.split(latents.shape[-2] // 2, dim=-2)[0]
+        dbg(result_latent, "latent_result_before_decode")
+
         scaled_latent = (result_latent / vae.config.scaling_factor).to(DEVICE, dtype=torch.float16)
-        result = vae.decode(scaled_latent).sample.clamp(-1, 1)
+        result        = vae.decode(scaled_latent).sample.clamp(-1, 1)
 
     # ==============================
     # COMPOSITING
     # ==============================
     result_pil_raw = tensor_to_pil(result[0].float())
-    save_debug(result_pil_raw, "vton_raw_result")  # DEBUG
+    dbg(result_pil_raw, "raw_vton_output_512")
 
-    # Resize raw output to match original image dimensions
-    result_np = np.array(result_pil_raw.resize(
-        (person_pil_original.width, person_pil_original.height), Image.LANCZOS
-    ))
+    result_np = np.array(result_pil_raw)
 
-    # Directly composite identity (hands and face) onto the raw output
-    print("Compositing identity (hands/face) onto raw output...")
+    print("Compositing hands onto raw output...")
     final_np = composite_hands(result_np, np.array(person_pil_original), identity_mask_path)
+    dbg(final_np, "final_after_hand_composite")
 
-    save_debug(final_np, "final_composited_identity_only")  # DEBUG
-
-    # Save final result
+    # ==============================
+    # SAVE
+    # ==============================
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     result_pil = Image.fromarray(final_np)
-
-    from PIL import ImageEnhance
-    result_pil = ImageEnhance.Color(result_pil).enhance(1.4)
     result_pil.save(output_path)
 
-    # ==============================
-    # GRID GENERATION
-    # ==============================
     if save_grid:
         cols = [
-            ("Person", person_pil_original),
+            ("Person",   person_pil_original),
             ("Agnostic", agnostic_pil),
-            ("Cloth", cloth_pil),
-            ("Raw out", result_pil_raw),
-            ("Final", result_pil),
+            ("Cloth",    cloth_pil),
+            ("Raw out",  result_pil_raw),
+            ("Final",    result_pil),
         ]
         lh = 18
         W, H = IMG_WIDTH, IMG_HEIGHT
@@ -683,6 +588,7 @@ def run_inference(
         grid.save(grid_path, quality=92)
         print(f"Grid  : {grid_path}")
 
+    print(f"\nAll debug images saved to: {debug_dir}")
     return result_pil
 
 # ==============================
@@ -699,7 +605,6 @@ def run_batch(pairs_file, vae, unet, scheduler):
     # Initialize metrics
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(DEVICE)
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(DEVICE)
-    # LPIPS uses pre-trained VGG network to compute perceptual similarity
     lpips_metric = LearnedPerceptualImagePatchSimilarity(net_type='vgg', normalize=True).to(DEVICE)
 
     successful_pairs = 0
@@ -719,10 +624,9 @@ def run_batch(pairs_file, vae, unet, scheduler):
         if not os.path.exists(mask_path):
             mask_path = os.path.join(DATASET_DIR, "agnostic_mask", f"{base_p}.jpg")
         if not os.path.exists(agnostic_path):
-            agnostic_path = os.path.join(DATASET_DIR, "agnostic", f"{base_p}.png")
+            agnostic_path = os.path.join(DATASET_DIR, "agnostic", f"{base_p}_agnostic.jpg")
 
         try:
-            # Generate the image
             result_pil = run_inference(
                 person_path, cloth_path, mask_path, agnostic_path,
                 output_path, vae, unet, scheduler,
@@ -731,14 +635,11 @@ def run_batch(pairs_file, vae, unet, scheduler):
             print(f"Completed {person_name} + {cloth_name}")
 
             # --- EVALUATION BLOCK ---
-            # Load Ground Truth and resize to match output
             gt_pil = Image.open(person_path).convert("RGB").resize((IMG_WIDTH, IMG_HEIGHT), Image.LANCZOS)
 
-            # Convert both to tensors in [0, 1] range
             gt_tensor = TF.to_tensor(gt_pil).unsqueeze(0).to(DEVICE)
             pred_tensor = TF.to_tensor(result_pil).unsqueeze(0).to(DEVICE)
 
-            # Update metric states
             psnr_metric.update(pred_tensor, gt_tensor)
             ssim_metric.update(pred_tensor, gt_tensor)
             lpips_metric.update(pred_tensor, gt_tensor)
@@ -779,12 +680,12 @@ if __name__ == "__main__":
 
         # ── Single inference ───────────────────────
         run_inference(
-            person_path="../own/images/test1.jpg",
-            cloth_path="../own/garments/1.jpg",
-            mask_path="../own/agnostic_mask/test1_inpaint_mask.png",
-            agnostic_path="../own/agnostic/test1_agnostic.jpg",
-            identity_mask_path="../own/identity_masks/test1.png",
-            output_path="catvton_finetuned_v4/results/result_debug_1.png",
+            person_path="../dataset_final/images/31.jpg",
+            cloth_path="../dataset_final/garments/83.jpg",
+            mask_path="../dataset_final/agnostic_mask/31_inpaint_mask.png",
+            agnostic_path="../dataset_final/agnostic/31_agnostic.jpg",
+            identity_mask_path="../dataset_final/identity_masks/31.png",
+            output_path="catvton_finetuned_v4/results/result_31.83.png",
             vae=vae,
             unet=unet,
             scheduler=scheduler,

@@ -5,9 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-import torchvision.transforms.functional as TF
 from PIL import Image, ImageDraw, ImageFont
-import numpy as np
 from tqdm import tqdm
 
 from diffusers import AutoencoderKL, UNet2DConditionModel, DDPMScheduler, DDIMScheduler
